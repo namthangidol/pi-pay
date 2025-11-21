@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Admin Orders — Pi Pay Demo</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;padding:18px;background:#f4f6f8}
+    table{border-collapse:collapse;width:100%;background:white}
+    th,td{padding:8px;border:1px solid #e6e9ef;text-align:left}
+    th{background:#f0f4f8}
+    .small{font-size:0.9rem;color:#666}
+    button{padding:6px 10px;border-radius:6px;border:none;background:#0f62fe;color:white}
+  </style>
+</head>
+<body>
+  <h2>Orders</h2>
+  <p class="small">Dev admin UI. Protect this with auth in production.</p>
+  <table id="tbl">
+    <thead><tr><th>ID</th><th>Amount</th><th>Memo</th><th>Status</th><th>TxID</th><th>Created</th><th>Action</th></tr></thead>
+    <tbody></tbody>
+  </table>
+<script>
+async function load() {
+  const r = await fetch('/api/admin/orders');
+  const rows = await r.json();
+  const tbody = document.querySelector('#tbl tbody');
+  tbody.innerHTML = '';
+  for (const r0 of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r0.id}</td><td>${r0.amount}</td><td>${r0.memo||''}</td><td>${r0.status}</td><td>${r0.txid||''}</td><td>${r0.created_at}</td>
+    <td><button onclick="verify('${r0.txid}')">Verify tx</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+async function verify(txid) {
+  if (!txid) { alert('No txid'); return; }
+  const r = await fetch('/api/admin/verify-tx', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({txid})});
+  const j = await r.json();
+  alert('Verify result: ' + JSON.stringify(j));
+}
+load();
+</script>
+</body>
+</html>

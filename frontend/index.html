@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Thanh toán Pi — NguyenNamThang</title>
+  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+  <script>
+    Pi.init({ version: "2.0", sandbox: true }); // set sandbox:false when live
+  </script>
+  <style>
+    body{font-family:Inter,system-ui,Arial;background:#f6f8fb;padding:28px}
+    .card{max-width:720px;margin:0 auto;background:white;padding:20px;border-radius:12px;box-shadow:0 10px 30px rgba(30,40,60,0.06)}
+    input,select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;margin-top:8px}
+    button{padding:10px 14px;border-radius:10px;border:none;background:#0f62fe;color:white;font-weight:700}
+    .muted{color:#667085;font-size:0.95rem}
+    .row{display:flex;gap:12px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Thanh toán bằng Pi — NguyenNamThang</h2>
+    <p class="muted">Mở trang này trong Pi Browser để test (hoặc dùng sandbox mode). Đăng nhập / cho quyền khi được hỏi.</p>
+
+    <label>Sản phẩm / dịch vụ</label>
+    <input id="item" value="Tư vấn kỹ thuật (30 phút)" />
+
+    <label>Giá (Pi)</label>
+    <input id="amount" value="1" type="number" step="0.01" />
+
+    <div style="margin-top:12px" class="row">
+      <button id="loginBtn">Đăng nhập Pi</button>
+      <button id="payBtn">Thanh toán bằng Pi</button>
+    </div>
+
+    <p id="status" class="muted" style="margin-top:12px"></p>
+
+    <hr />
+    <p class="muted">Để nhúng vào trang của anh, chép file này vào server và thêm iframe hoặc link tới file này.<br>Ví dụ:
+      <code>&lt;iframe src="/pi-pay/index.html" style="width:100%;height:640px;border:0"&gt;&lt;/iframe&gt;</code>
+    </p>
+  </div>
+
+<script>
+  const status = document.getElementById('status');
+  const payBtn = document.getElementById('payBtn');
+  const loginBtn = document.getElementById('loginBtn');
+  const scopes = ['username','payments'];
+
+  function onIncompletePaymentFound(payment) {
+    console.log('Incomplete payment found', payment);
+  }
+
+  loginBtn.addEventListener('click', async () => {
+    status.innerText = 'Đang đăng nhập...';
+    try {
+      const auth = await Pi.authenticate(scopes, onIncompletePaymentFound);
+      status.innerText = 'Đã đăng nhập: @' + (auth.user?.username || 'unknown');
+    } catch (err) {
+      console.error(err);
+      status.innerText = 'Lỗi đăng nhập: ' + (err?.message || err);
+    }
+  });
+
+  payBtn.addEventListener('click', async () => {
+    const amount = parseFloat(document.getElementById('amount').value);
+    const memo = document.getElementById('item').value;
+    if (!amount || amount <= 0) { alert('Nhập giá Pi hợp lệ'); return; }
+
+    status.innerText = 'Tạo đơn...';
+
+    // Create a local order on your server (optional but recommended)
+    let appPaymentId = null;
+    try {
+      const createResp = await fetch('/api/payments/create', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({amount, memo})
+      });
+      const createJson = await createResp.json();
+      appPaymentId = createJson?.id || null;
+    } catch (e) {
+      console.warn('Không thể gọi backend create (vẫn có thể tiếp tục sandbox).', e);
+    }
+
+    try {
+      await Pi.createPayment({
+        amount: amount,
+        memo: memo,
+        metadata: { appPaymentId }
+      }, {
+        onReadyForServerApproval: function(paymentId) {
+          status.innerText = 'Người dùng chấp nhận. Đang chờ server phê duyệt...';
+          fetch('/api/payments/approve', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ paymentId, appPaymentId })})
+            .then(r=>r.json()).then(d=>console.log('approve result', d)).catch(e=>console.error(e));
+        },
+        onReadyForServerCompletion: function(paymentId, txid) {
+          status.innerText = 'Thanh toán hoàn tất. TxID: ' + txid;
+          fetch('/api/payments/complete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ paymentId, txid, appPaymentId })});
+        },
+        onCancel: function(paymentId) {
+          status.innerText = 'Người dùng hủy giao dịch';
+        },
+        onError: function(error, payment) {
+          status.innerText = 'Lỗi giao dịch: ' + (error?.message || JSON.stringify(error));
+        }
+      });
+    } catch (err) {
+      console.error('createPayment threw', err);
+      status.innerText = 'Lỗi khi gọi Pi.createPayment: ' + (err?.message || err);
+    }
+  });
+</script>
+</body>
+</html>
